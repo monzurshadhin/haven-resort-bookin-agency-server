@@ -2,9 +2,19 @@ const express = require("express");
 const { MongoClient } = require("mongodb");
 const ObjectId = require('mongodb').ObjectId;
 const cors = require("cors");
+const admin = require("firebase-admin");
 require("dotenv").config();
+
+
 const app = express();
 const port = process.env.PORT || 5000;
+
+const serviceAccount = require(`./epic-resort-booking-agency-firebase-adminsdk-exivy-efed7b3a05.json`);
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 // middleware
 app.use(cors());
 app.use(express.json());
@@ -16,6 +26,18 @@ const client = new MongoClient(uri, {
   useUnifiedTopology: true,
 });
 
+async function verifyToken(req, res, next) {
+  if (req.headers.authorization?.startsWith("Bearer ")) {
+    const token = req.headers.authorization.split(" ")[1];
+
+    try {
+      const decodedUser = await admin.auth().verifyIdToken(token);
+      req.decodedEmail = decodedUser.email;
+    } catch {}
+  }
+  next();
+}
+
 
 async function run() {
     try {
@@ -25,6 +47,8 @@ async function run() {
       const blogsCollection = database.collection("blogs");
       const bookingCollection = database.collection("bookings");
       const reviewsCollection = database.collection("reviews");
+      const usersCollection = database.collection("users");
+
     //   const registerCollection = database.collection("register_event");
       console.log('db connected successfully');
     // get all api data  form offer collection 
@@ -125,6 +149,62 @@ async function run() {
         const reviews =await cursor.toArray();
         res.send(reviews);
       
+      });
+
+      app.post("/users", async (req, res) => {
+        const user = req.body;
+        // console.log(user);
+        const result = await usersCollection.insertOne(user);
+        res.json(result);
+      });
+      app.put("/users", async (req, res) => {
+        const user = req.body;
+        console.log(user);
+        const filter = { email: user.email };
+        const option = { upsert: true };
+        const updateDoc = {
+          $set: user,
+        };
+        const result = await usersCollection.updateOne(filter, updateDoc, option);
+        res.json(result);
+      });
+
+      app.put("/users/admin", verifyToken, async (req, res) => {
+        const user = req.body;
+        console.log(user);
+        // console.log(user);
+        const requester = req.decodedEmail;
+        // console.log(requester);
+  
+        if (requester) {
+          const requesterAccount = await usersCollection.findOne({
+            email: requester
+          });
+          if (requesterAccount.role === "admin") {
+            const filter = { email: user.email };
+            const updateDoc = {
+              $set: { role: "admin" }
+            };
+            const result = await usersCollection.updateOne(filter, updateDoc);
+            // console.log(result);
+            res.json(result);
+          }
+        }
+        else{
+          res.status(403).json({message:'you can not make admin'});
+        }
+      });
+
+      app.get("/users/:email", async (req, res) => {
+        const email = req.params.email;
+        const query = { email: email };
+        const user = await usersCollection.findOne(query);
+        let isAdmin = false;
+  
+        if (user?.role === "admin") {
+          isAdmin = true;
+        }
+        res.json({ admin: isAdmin });
       });
 
     } finally {

@@ -14,4 +14,4 @@ this project is for a resort booking agency. where you can see different type of
 - you can store booking information in mongodb atlas.
 - you can can delete booking information.
 - you can update booking information.
-- you can also add new resort information.
+- you can also add new resort information...
